@@ -28,12 +28,12 @@ func Extract(r io.Reader) ([]string, error) {
 		idy := -1
 		cnt := 1
 
-		for i := from + idx + 2; cnt != 0; i++ {
-			if string(text[i]) == "(" {
+		for i := from + idx + 2; cnt != 0 && i < len(text); i++ {
+			if text[i] == '(' {
 				cnt += 1
 			}
 
-			if string(text[i]) == ")" {
+			if text[i] == ')' {
 				cnt -= 1
 			}
 
@@ -44,7 +44,8 @@ func Extract(r io.Reader) ([]string, error) {
 		}
 
 		if idy == -1 {
-			break
+			from = from + idx + 2
+			continue
 		}
 
 		url := text[from+idx+2 : idy]

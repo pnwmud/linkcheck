@@ -48,7 +48,7 @@ func TestMarkdownDoubleUrl(t *testing.T) {
 	}
 }
 
-func TestMarkdownIncludedUrl(t *testing.T) {
+func TestMarkdownNestedParenthesesUrl(t *testing.T) {
 	got, err := Extract(strings.NewReader("[article](https://en.wikipedia.org/wiki/Foo_(bar))"))
 
 	if err != nil {
@@ -56,6 +56,20 @@ func TestMarkdownIncludedUrl(t *testing.T) {
 	}
 
 	want := []string{"https://en.wikipedia.org/wiki/Foo_(bar)"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestMarkdownBrokenUrl(t *testing.T) {
+	got, err := Extract(strings.NewReader("[a](https://broken"))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{}
 
 	if !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
