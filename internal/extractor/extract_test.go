@@ -47,3 +47,17 @@ func TestMarkdownDoubleUrl(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestMarkdownIncludedUrl(t *testing.T) {
+	got, err := Extract(strings.NewReader("[article](https://en.wikipedia.org/wiki/Foo_(bar))"))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"https://en.wikipedia.org/wiki/Foo_(bar)"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
