@@ -75,3 +75,59 @@ func TestMarkdownBrokenUrl(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestMarkdownMailto(t *testing.T) {
+	got, err := Extract(strings.NewReader("[mail](mailto:someone@example.com)"))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"mailto:someone@example.com"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestMarkdownAnchor(t *testing.T) {
+	got, err := Extract(strings.NewReader("[anchor](#section)"))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"#section"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestMarkdownRelative(t *testing.T) {
+	got, err := Extract(strings.NewReader("[file](./docs/intro.md)"))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"./docs/intro.md"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestMarkdownEscaping(t *testing.T) {
+	got, err := Extract(strings.NewReader("That's \\[NotAUrl\\](https://a.com), real one [Url](https://b.com)"))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"https://b.com"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}

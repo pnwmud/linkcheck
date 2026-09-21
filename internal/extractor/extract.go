@@ -25,6 +25,11 @@ func Extract(r io.Reader) ([]string, error) {
 			break
 		}
 
+		if text[from+idx-1] == '\\' {
+			from = from + idx + 2
+			continue
+		}
+
 		idy := -1
 		cnt := 1
 
