@@ -7,7 +7,7 @@ import (
 )
 
 func TestMarkdownSoloNil(t *testing.T) {
-	got, err := Extract(strings.NewReader(""))
+	got, err := MarkdownExtract(strings.NewReader(""))
 
 	if err != nil {
 		t.Error(err)
@@ -21,7 +21,7 @@ func TestMarkdownSoloNil(t *testing.T) {
 }
 
 func TestMarkdownSoloUrl(t *testing.T) {
-	got, err := Extract(strings.NewReader("[go](https://example.com)"))
+	got, err := MarkdownExtract(strings.NewReader("[go](https://example.com)"))
 
 	if err != nil {
 		t.Error(err)
@@ -35,7 +35,7 @@ func TestMarkdownSoloUrl(t *testing.T) {
 }
 
 func TestMarkdownDoubleUrl(t *testing.T) {
-	got, err := Extract(strings.NewReader("[a](https://a.com) [b](https://b.com)"))
+	got, err := MarkdownExtract(strings.NewReader("[a](https://a.com) [b](https://b.com)"))
 
 	if err != nil {
 		t.Error(err)
@@ -49,7 +49,7 @@ func TestMarkdownDoubleUrl(t *testing.T) {
 }
 
 func TestMarkdownNestedParenthesesUrl(t *testing.T) {
-	got, err := Extract(strings.NewReader("[article](https://en.wikipedia.org/wiki/Foo_(bar))"))
+	got, err := MarkdownExtract(strings.NewReader("[article](https://en.wikipedia.org/wiki/Foo_(bar))"))
 
 	if err != nil {
 		t.Error(err)
@@ -63,7 +63,7 @@ func TestMarkdownNestedParenthesesUrl(t *testing.T) {
 }
 
 func TestMarkdownBrokenUrl(t *testing.T) {
-	got, err := Extract(strings.NewReader("[a](https://broken"))
+	got, err := MarkdownExtract(strings.NewReader("[a](https://broken"))
 
 	if err != nil {
 		t.Error(err)
@@ -77,7 +77,7 @@ func TestMarkdownBrokenUrl(t *testing.T) {
 }
 
 func TestMarkdownMailto(t *testing.T) {
-	got, err := Extract(strings.NewReader("[mail](mailto:someone@example.com)"))
+	got, err := MarkdownExtract(strings.NewReader("[mail](mailto:someone@example.com)"))
 
 	if err != nil {
 		t.Error(err)
@@ -91,7 +91,7 @@ func TestMarkdownMailto(t *testing.T) {
 }
 
 func TestMarkdownAnchor(t *testing.T) {
-	got, err := Extract(strings.NewReader("[anchor](#section)"))
+	got, err := MarkdownExtract(strings.NewReader("[anchor](#section)"))
 
 	if err != nil {
 		t.Error(err)
@@ -105,7 +105,7 @@ func TestMarkdownAnchor(t *testing.T) {
 }
 
 func TestMarkdownRelative(t *testing.T) {
-	got, err := Extract(strings.NewReader("[file](./docs/intro.md)"))
+	got, err := MarkdownExtract(strings.NewReader("[file](./docs/intro.md)"))
 
 	if err != nil {
 		t.Error(err)
@@ -119,13 +119,83 @@ func TestMarkdownRelative(t *testing.T) {
 }
 
 func TestMarkdownEscaping(t *testing.T) {
-	got, err := Extract(strings.NewReader("That's \\[NotAUrl\\](https://a.com), real one [Url](https://b.com)"))
+	got, err := MarkdownExtract(strings.NewReader("That's \\[NotAUrl\\](https://a.com), real one [Url](https://b.com)"))
 
 	if err != nil {
 		t.Error(err)
 	}
 
 	want := []string{"https://b.com"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestHTMLNil(t *testing.T) {
+	got, err := HTMLExtract(strings.NewReader(""))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestHTMLSoloUrl(t *testing.T) {
+	got, err := HTMLExtract(strings.NewReader(`<a class="btn" href="https://example.org/page">клик</a>`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"https://example.org/page"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestHTMLSoloLongUrl(t *testing.T) {
+	got, err := HTMLExtract(strings.NewReader(`<a class="btn">клик</a><a href="https://a.com">вторая</a>`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"https://a.com"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestHTMLDoubleUrl(t *testing.T) {
+	got, err := HTMLExtract(strings.NewReader(`<a href="https://a.com">первая</a> <a href="https://b.com">вторая</a>`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"https://a.com", "https://b.com"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestHTMLBrokenUrl(t *testing.T) {
+	got, err := HTMLExtract(strings.NewReader(`<a href="https://ok.com">первая</a> <a href="broken вторая</a>`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"https://ok.com"}
 
 	if !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)

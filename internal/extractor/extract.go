@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func Extract(r io.Reader) ([]string, error) {
+func MarkdownExtract(r io.Reader) ([]string, error) {
 
 	data, err := io.ReadAll(r)
 
@@ -58,6 +58,44 @@ func Extract(r io.Reader) ([]string, error) {
 		res = append(res, url)
 
 		from = idy + 1
+
+	}
+
+	return res, nil
+}
+
+func HTMLExtract(r io.Reader) ([]string, error) {
+
+	data, err := io.ReadAll(r)
+
+	if err != nil {
+		return nil, err
+	}
+
+	text := string(data)
+	from := 0
+
+	res := []string{}
+
+	for {
+		idx := strings.Index(text[from:], "href=\"")
+
+		if idx == -1 {
+			break
+		}
+
+		idy := strings.Index(text[from+idx:], "\">")
+
+		if idy == -1 {
+			from = from + idx + 6
+			continue
+		}
+
+		url := text[from+idx+6 : from+idy+idx]
+
+		res = append(res, url)
+
+		from = from + idx + idy + 2
 
 	}
 
