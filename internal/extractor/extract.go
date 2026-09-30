@@ -99,5 +99,27 @@ func HTMLExtract(r io.Reader) ([]string, error) {
 
 	}
 
+	for {
+		idx := strings.Index(text[from:], "src=\"")
+
+		if idx == -1 {
+			break
+		}
+
+		idy := strings.Index(text[from+idx:], "\">")
+
+		if idy == -1 {
+			from = from + idx + 5
+			continue
+		}
+
+		url := text[from+idx+5 : from+idy+idx]
+
+		res = append(res, url)
+
+		from = from + idx + idy + 2
+
+	}
+
 	return res, nil
 }

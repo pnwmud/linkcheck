@@ -201,3 +201,17 @@ func TestHTMLBrokenUrl(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestHTMLSrcUrl(t *testing.T) {
+	got, err := HTMLExtract(strings.NewReader(`<img src="a.png">`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"a.png"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
