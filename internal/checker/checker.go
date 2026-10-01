@@ -31,3 +31,9 @@ type HTTPChecker struct {
 type Doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
+
+func New(d Doer) *HTTPChecker {
+	return &HTTPChecker{
+		client: d,
+	}
+}
