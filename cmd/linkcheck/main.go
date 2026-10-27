@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -77,18 +78,13 @@ func main() {
 	linksBroken := 0
 
 	for _, link := range links {
-		status, err := c.Check(link)
+		res := c.Check(context.Background(), link)
 
-		if err != nil {
+		if res.Outcome.Broken() {
 			linksBroken += 1
-			fmt.Printf("[BROKEN] %s (err: %v)\n", link, err)
+			fmt.Printf("[BROKEN] URL: %v, Status: %v, Outcome: %v, Error: %v\n", res.URL, res.Status, res.Outcome, res.Err)
 		} else {
-			if status >= 400 && status <= 599 {
-				linksBroken += 1
-				fmt.Printf("[BROKEN] %s (status: %d)\n", link, status)
-			} else {
-				fmt.Printf("[+] %s (status: %d)\n", link, status)
-			}
+			fmt.Printf("[OK] URL: %v, Status: %v\n", res.URL, res.Status)
 		}
 	}
 
