@@ -4,81 +4,110 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
-	"io"
 	"net"
 	"net/http"
-	"strings"
+	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 )
 
 type fakeDoer struct {
-	status int
-	err    error
+	err error
 }
 
-func (f fakeDoer) Do(req *http.Request) (*http.Response, error) {
-	resp := &http.Response{StatusCode: f.status, Body: io.NopCloser(strings.NewReader(""))}
-	return resp, f.err
+func (f fakeDoer) Do(*http.Request) (*http.Response, error) { return nil, f.err }
+
+func TestCheckStatuses(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		want   Outcome
+	}{
+		{"200 is ok", http.StatusOK, OK},
+		{"301 is redirect", http.StatusMovedPermanently, Redirect},
+		{"404 is client error", http.StatusNotFound, ClientError},
+		{"500 is server error", http.StatusInternalServerError, ServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					if tt.status >= 300 && tt.status < 400 {
+						w.Header().Set("Location", "/elsewhere")
+					}
+					w.WriteHeader(tt.status)
+				}))
+
+			defer srv.Close()
+
+			client := srv.Client()
+
+			noRedirect := func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			}
+
+			client.CheckRedirect = noRedirect
+
+			got := New(client).Check(context.Background(), srv.URL)
+
+			if got.Status != tt.status {
+				t.Errorf("status: got %d, want %d", got.Status, tt.status)
+			}
+			if got.Outcome != tt.want {
+				t.Errorf("outcome: got %v, want %v", got.Outcome, tt.want)
+			}
+		})
+	}
 }
 
-func TestCheck_OK(t *testing.T) {
-	f := fakeDoer{status: 200, err: nil}
-	h := HTTPChecker{client: f}
-	wantS := 200
+func TestCheck_Timeout(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			<-release
+		}))
+	defer srv.Close()
+	defer close(release)
 
-	res := h.Check(context.Background(), "http://example.com")
+	client := srv.Client()
+	client.Timeout = 50 * time.Millisecond
 
-	if res.Status != wantS {
-		t.Errorf("got %d, want %d", res.Status, wantS)
-	}
+	got := New(client).Check(context.Background(), srv.URL)
 
-	if res.Outcome != OK {
-		t.Errorf("got %v, want %v", res.Outcome, OK)
-	}
-
-	if res.Err != nil {
-		t.Errorf("got %v, want %v", res.Err, nil)
-	}
-}
-
-func TestCheck_NotFound(t *testing.T) {
-	f := fakeDoer{status: 404, err: nil}
-	h := HTTPChecker{client: f}
-	wantS := 404
-
-	res := h.Check(context.Background(), "http://example.com")
-
-	if res.Status != wantS {
-		t.Errorf("got %d, want %d", res.Status, wantS)
-	}
-
-	if res.Outcome != ClientError {
-		t.Errorf("got %v, want %v", res.Outcome, ClientError)
-	}
-
-	if res.Err != nil {
-		t.Errorf("got %v, want %v", res.Err, nil)
+	if got.Outcome != Timeout {
+		t.Errorf("outcome: got %v (err: %v), want %v", got.Outcome, got.Err, Timeout)
 	}
 }
 
-func TestCheck_NetworkError(t *testing.T) {
-	NetErr := errors.New("network down: connection refused")
-	f := fakeDoer{status: 0, err: NetErr}
-	h := HTTPChecker{client: f}
-	wantS := 0
+func TestCheck_TLS(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
 
-	res := h.Check(context.Background(), "http://example.com")
+	client := &http.Client{Transport: &http.Transport{}}
 
-	if res.Status != wantS {
-		t.Errorf("got %d, want %d", res.Status, wantS)
+	got := New(client).Check(context.Background(), srv.URL)
+
+	if got.Outcome != TLSError {
+		t.Errorf("outcome: got %v (err: %v), want %v", got.Outcome, got.Err, TLSError)
+	}
+}
+
+func TestCheck_DNS(t *testing.T) {
+	dnsErr := &net.DNSError{Err: "no such host", Name: "nope.invalid", IsNotFound: true}
+
+	doer := fakeDoer{err: &url.Error{Op: "Get", URL: "http://nope.invalid", Err: dnsErr}}
+
+	got := New(doer).Check(context.Background(), "http://nope.invalid")
+
+	if got.Outcome != DNSError {
+		t.Errorf("outcome: %v (err: %v), want %v", got.Outcome, got.Err, DNSError)
 	}
 
-	if res.Outcome != OtherError {
-		t.Errorf("got %v, want %v", res.Outcome, OtherError)
-	}
-
-	if !errors.Is(res.Err, NetErr) {
-		t.Errorf("got %v, want %v", res.Err, NetErr)
+	var target *net.DNSError
+	if !errors.As(got.Err, &target) {
+		t.Errorf("error chain lost *net.DNSError: %v", got.Err)
 	}
 }
 
