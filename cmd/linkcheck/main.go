@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,79 +17,130 @@ import (
 	"github.com/pnwmud/linkcheck/internal/extractor"
 )
 
-func main() {
-	timeoutFlag := flag.Duration("timeout", 5*time.Second, "HTTP request timeout")
+const (
+	exitOK     = 0
+	exitBroken = 1
+	exitUsage  = 2
+)
 
-	flag.Parse()
+var errUnsupportedType = errors.New("unsupported file type")
 
-	args := flag.Args()
-
-	if len(args) < 1 {
-		fmt.Println("Err: no file path")
-		os.Exit(2)
-	}
-
-	filePath := args[0]
-
-	fmt.Printf("Configuration: timeout is %v, file %s\n", *timeoutFlag, filePath)
-
-	file, err := os.Open(filePath)
+func extractFile(path string) ([]string, error) {
+	f, err := os.Open(path)
 
 	if err != nil {
-		fmt.Printf("Err: can't open file: %v\n", err)
-		os.Exit(2)
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 
-	defer file.Close()
+	defer f.Close()
 
-	var links []string
-
-	ext := filepath.Ext(filePath)
-	ext = strings.ToLower(ext)
-
-	switch ext {
+	switch strings.ToLower(filepath.Ext(path)) {
 	case ".md":
-		links, err = extractor.MarkdownExtract(file)
+		return extractor.MarkdownExtract(f)
 	case ".html":
-		links, err = extractor.HTMLExtract(file)
+		return extractor.HTMLExtract(f)
 	default:
-		fmt.Println("Err: wrong file type")
-		os.Exit(2)
+		return nil, fmt.Errorf("%w: %q", errUnsupportedType, filepath.Ext(path))
 	}
+
+}
+
+func unique(links []string) []string {
+	seen := make(map[string]struct{}, len(links))
+	out := make([]string, 0, len(links))
+
+	for _, l := range links {
+		if _, ok := seen[l]; ok {
+			continue
+		}
+		seen[l] = struct{}{}
+		out = append(out, l)
+	}
+
+	return out
+}
+
+func isHTTP(link string) bool {
+	u, err := url.Parse(link)
 
 	if err != nil {
-		fmt.Printf("Err: %v\n", err)
-		os.Exit(2)
+		return false
 	}
 
-	linksCnt := 0
-
-	fmt.Println("\nFound links:")
-	for _, link := range links {
-		linksCnt += 1
-		fmt.Println(link)
+	if (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
+		return true
 	}
 
-	httpClient := &http.Client{
-		Timeout: *timeoutFlag,
+	return false
+}
+
+func describe(res checker.Result) string {
+	s := res.Outcome.String()
+	if res.Status > 0 {
+		s += fmt.Sprintf(", status %d", res.Status)
+	}
+	if res.Err != nil {
+		s += fmt.Sprintf(": %v", res.Err)
+	}
+	return s
+}
+
+func run(ctx context.Context, args []string, stdout, stderr io.Writer, client checker.Doer) int {
+	fs := flag.NewFlagSet("linkcheck", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	timeout := fs.Duration("timeout", 5*time.Second, "HTTP request timeout")
+
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
 	}
 
-	c := checker.New(httpClient)
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "usage: linkcheck [flags] <file.md|file.html>")
+		return exitUsage
+	}
 
-	fmt.Println("\nChecking links:")
+	links, err := extractFile(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintf(stderr, "linkcheck: %v\n", err)
+		return exitUsage
+	}
 
-	linksBroken := 0
-
-	for _, link := range links {
-		res := c.Check(context.Background(), link)
-
-		if res.Outcome.Broken() {
-			linksBroken += 1
-			fmt.Printf("[BROKEN] URL: %v, Status: %v, Outcome: %v, Error: %v\n", res.URL, res.Status, res.Outcome, res.Err)
-		} else {
-			fmt.Printf("[OK] URL: %v, Status: %v\n", res.URL, res.Status)
+	if client == nil {
+		client = &http.Client{
+			Timeout:       *timeout,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 		}
 	}
 
-	fmt.Printf("checked: %d, broken: %d", linksCnt, linksBroken)
+	c := checker.New(client)
+
+	checked, broken := 0, 0
+	for _, link := range unique(links) {
+		if !isHTTP(link) {
+			fmt.Fprintf(stdout, "[SKIP] %s\n", link)
+			continue
+		}
+
+		res := c.Check(ctx, link)
+		checked++
+
+		if res.Outcome.Broken() {
+			broken++
+			fmt.Fprintf(stdout, "[BROKEN] %s (%s)\n", link, describe(res))
+		} else {
+			fmt.Fprintf(stdout, "[OK] %s (%d)\n", link, res.Status)
+		}
+	}
+
+	fmt.Fprintf(stdout, "checked: %d, broken: %d\n", checked, broken)
+
+	if broken > 0 {
+		return exitBroken
+	}
+	return exitOK
+
+}
+
+func main() {
+	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr, nil))
 }
