@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+func isEscaped(text string, pos int) bool {
+	n := 0
+	for i := pos - 1; i >= 0 && text[i] == '\\'; i-- {
+		n++
+	}
+	return n%2 == 1
+}
+
 func MarkdownExtract(r io.Reader) ([]string, error) {
 
 	data, err := io.ReadAll(r)
@@ -25,7 +33,7 @@ func MarkdownExtract(r io.Reader) ([]string, error) {
 			break
 		}
 
-		if text[from+idx-1] == '\\' {
+		if isEscaped(text, from+idx) {
 			from = from + idx + 2
 			continue
 		}

@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func FuzzMarkdownExtract(f *testing.F) {
+	f.Add("[go](https://example.com)")
+	f.Add(`\[a\](b) [c](d(e))`)
+	f.Fuzz(func(t *testing.T, in string) {
+		if _, err := MarkdownExtract(strings.NewReader(in)); err != nil {
+			t.Fatal((err))
+		}
+	})
+}
+
 func TestMarkdownSoloNil(t *testing.T) {
 	got, err := MarkdownExtract(strings.NewReader(""))
 
@@ -119,16 +129,27 @@ func TestMarkdownRelative(t *testing.T) {
 }
 
 func TestMarkdownEscaping(t *testing.T) {
-	got, err := MarkdownExtract(strings.NewReader("That's \\[NotAUrl\\](https://a.com), real one [Url](https://b.com)"))
-
-	if err != nil {
-		t.Error(err)
+	tests := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"single backslash escapes", `That's \[NotAUrl\](https://a.com), real one [Url](https://b.com)`, []string{"https://b.com"}},
+		{"double backslash is not escape", `\\](https://a.com)`, []string{"https://a.com"}},
+		{"starts with close bracket pattern", `](https://a.com)`, []string{"https://a.com"}},
 	}
 
-	want := []string{"https://b.com"}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := MarkdownExtract(strings.NewReader(tt.in))
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	if !slices.Equal(got, want) {
-		t.Errorf("got %v, want %v", got, want)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
