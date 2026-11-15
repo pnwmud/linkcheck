@@ -236,3 +236,18 @@ func TestHTMLSrcUrl(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestHTMLMixedOrder(t *testing.T) {
+	got, err := HTMLExtract(strings.NewReader(`<img src="x.png"> <a href="mailto:support@example.com">написать</a>`))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := []string{"x.png", "mailto:support@example.com"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+
+}

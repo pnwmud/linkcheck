@@ -3,6 +3,8 @@ package extractor
 import (
 	"io"
 	"strings"
+
+	"golang.org/x/net/html"
 )
 
 func isEscaped(text string, pos int) bool {
@@ -73,61 +75,22 @@ func MarkdownExtract(r io.Reader) ([]string, error) {
 }
 
 func HTMLExtract(r io.Reader) ([]string, error) {
-
-	data, err := io.ReadAll(r)
-
-	if err != nil {
-		return nil, err
-	}
-
-	text := string(data)
-	from := 0
-
-	res := []string{}
+	links := []string{}
+	z := html.NewTokenizer(r)
 
 	for {
-		idx := strings.Index(text[from:], "href=\"")
-
-		if idx == -1 {
-			break
+		switch z.Next() {
+		case html.ErrorToken:
+			if err := z.Err(); err != io.EOF {
+				return nil, err
+			}
+			return links, nil
+		case html.StartTagToken, html.SelfClosingTagToken:
+			for _, attr := range z.Token().Attr {
+				if (attr.Key == "href" || attr.Key == "src") && attr.Val != "" {
+					links = append(links, attr.Val)
+				}
+			}
 		}
-
-		idy := strings.Index(text[from+idx:], "\">")
-
-		if idy == -1 {
-			from = from + idx + 6
-			continue
-		}
-
-		url := text[from+idx+6 : from+idy+idx]
-
-		res = append(res, url)
-
-		from = from + idx + idy + 2
-
 	}
-
-	for {
-		idx := strings.Index(text[from:], "src=\"")
-
-		if idx == -1 {
-			break
-		}
-
-		idy := strings.Index(text[from+idx:], "\">")
-
-		if idy == -1 {
-			from = from + idx + 5
-			continue
-		}
-
-		url := text[from+idx+5 : from+idy+idx]
-
-		res = append(res, url)
-
-		from = from + idx + idy + 2
-
-	}
-
-	return res, nil
 }
